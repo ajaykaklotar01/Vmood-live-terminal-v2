@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>VMOOD Live Terminal v2</title>
+<style>
+:root{--bg:#000;--card:#111;--accent:#ffd34d;--muted:#bdbdbf;--live:#00ff88}
+body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:linear-gradient(180deg,#000,#0b0b0b);color:var(--accent)}
+.header{padding:18px 16px;background:linear-gradient(90deg,#000,#151515);display:flex;align-items:center;gap:12px}
+.logo{width:44px;height:44px;background:var(--card);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--accent)}
+h1{font-size:18px;margin:0}
+.container{padding:16px;max-width:1100px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.card{background:var(--card);border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 8px 30px rgba(0,0,0,0.6)}
+.big{grid-column:span 2}
+.label{font-size:12px;color:var(--muted);margin-bottom:6px}
+.price{font-size:34px;font-weight:800;color:var(--live)}
+.status{font-size:13px;color:var(--muted);margin-top:6px}
+.btn{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px 10px;border-radius:8px;color:var(--muted);cursor:pointer}
+.footer{padding:18px;text-align:center;color:var(--muted);font-size:13px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.big{grid-column:span 1}}
+</style>
+</head>
+<body>
+<header class="header"><div class="logo">VM</div><div><h1>⚡ VMOOD Live Terminal v2</h1><div style="font-size:12px;color:var(--muted)">Nifty 50 · Auto Live (10s) · Dark Luxury</div></div></header>
+<main class="container">
+  <div class="grid">
+    <div class="card big">
+      <div class="label">Live NIFTY 50</div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div><div id="price" class="price">--</div><div id="status" class="status">Status: <span id="sttxt">Waiting</span></div></div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="label">Last update</div>
+          <div id="updated" style="font-weight:700;color:var(--muted)">--</div>
+          <div style="height:8px"></div>
+          <button class="btn" onclick="forceRefresh()">Refresh</button>
+        </div>
+      </div>
+      <div style="height:8px"></div>
+      <div class="label">Notes</div>
+      <div style="color:var(--muted);font-size:13px">This terminal uses multiple live sources and will auto-fallback if one fails. Works best during NSE market hours.</div>
+    </div>
+
+    <div class="card">
+      <div class="label">Smart Strike Zone (auto)</div>
+      <div id="strikes" style="font-weight:800;color:var(--accent);font-size:18px">--</div>
+      <div id="delta" class="status">Delta: --</div>
+    </div>
+
+    <div class="card">
+      <div class="label">Suggested Options</div>
+      <div id="suggest" style="font-weight:700;color:var(--muted);font-size:16px">--</div>
+      <div style="height:8px"></div>
+      <div class="label">Mode</div>
+      <div style="display:flex;gap:8px"><button class="btn" id="modeAuto" onclick="setMode('auto')">Auto</button><button class="btn" id="modeManual" onclick="setMode('manual')">Manual</button></div>
+      <div id="manualControls" style="display:none;margin-top:8px">
+        <div class="label">Enter price (manual)</div>
+        <input id="manualPrice" type="number" style="width:100%;padding:8px;border-radius:8px;border:none;background:#0d0d0d;color:var(--accent)"/>
+        <div style="height:8px"></div>
+        <button class="btn" onclick="applyManual()">Apply</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">Fallback Log</div>
+      <div id="log" style="font-size:13px;color:var(--muted);height:140px;overflow:auto"></div>
+    </div>
+
+    <div class="card">
+      <div class="label">Extra Tools</div>
+      <div style="font-size:13px;color:var(--muted)">
+        <div>• Manual backtest input (use Manual mode)</div>
+        <div>• Next: Profit Estimator (coming)</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">About</div>
+      <div style="font-size:13px;color:var(--muted)">Built with 💛 by your bro Aladin jin — VMOOD Terminal v2</div>
+    </div>
+  </div>
+</main>
+<footer class="footer">© 2025 VMOOD · Live Terminal v2</footer>
+
+<script>
+const YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?interval=1m";
+const NSEAPI = "https://www.nseindia.com/api/quote-index?index=NIFTY%2050";
+const AGENT = "https://api.allorigins.win/raw?url="; // CORS proxy to avoid browser blocks
+
+let mode = 'auto';
+
+function log(msg){
+  const el = document.getElementById('log');
+  el.innerText = (new Date().toLocaleTimeString()) + " — " + msg + "\n" + el.innerText;
+}
+
+function setMode(m){ mode=m; document.getElementById('manualControls').style.display = (m==='manual'?'block':'none'); document.getElementById('modeAuto').classList.toggle('active', m==='auto'); document.getElementById('modeManual').classList.toggle('active', m==='manual'); }
+
+function applyManual(){ const p = Number(document.getElementById('manualPrice').value); if(p>0){ updateUIPrice(p); log('Manual price applied: '+p);} }
+
+function updateUIPrice(price){
+  document.getElementById('price').innerText = price.toFixed(2);
+  document.getElementById('sttxt').innerText = 'Live';
+  document.getElementById('updated').innerText = new Date().toLocaleTimeString();
+  const atm = Math.round(price/100)*100;
+  document.getElementById('strikes').innerText = `ATM ${atm} · CE ${atm+100} · PE ${atm-100}`;
+  const suggestion = (price % 200 >= 100) ? `Bullish → consider ${atm+100} CE` : `Bearish → consider ${atm-100} PE`;
+  document.getElementById('suggest').innerText = suggestion;
+  document.getElementById('delta').innerText = 'Delta approx: ATM 0.50 · ITM 0.60';
+}
+
+async function fetchYahoo(){
+  try{
+    const res = await fetch(AGENT + encodeURIComponent(YAHOO));
+    const j = await res.json();
+    if(j && j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta){
+      const p = j.chart.result[0].meta.regularMarketPrice;
+      log('Yahoo price '+p);
+      return p;
+    } else { throw new Error('Yahoo no data'); }
+  } catch(e){
+    log('Yahoo failed: '+e.message);
+    return null;
+  }
+}
+
+async function fetchNSE(){
+  try{
+    const res = await fetch(AGENT + encodeURIComponent(NSEAPI));
+    const j = await res.json();
+    if(j && j.traded && j.traded.last){
+      const p = j.traded.last;
+      log('NSE API price '+p);
+      return p;
+    } else { throw new Error('NSE no data'); }
+  } catch(e){
+    log('NSE fetch failed: '+e.message);
+    return null;
+  }
+}
+
+// Primary sequence: try Yahoo via proxy -> try NSE via proxy
+async function fetchPriceAuto(){
+  if(mode==='manual') return;
+  document.getElementById('sttxt').innerText = 'Fetching...';
+  // Try yahoo
+  let price = await fetchYahoo();
+  if(price){ updateUIPrice(price); return; }
+  // fallback to NSE
+  price = await fetchNSE();
+  if(price){ updateUIPrice(price); return; }
+  // final: report error
+  document.getElementById('sttxt').innerText = 'Waiting';
+  document.getElementById('price').innerText = 'Error fetching price ⚠️';
+  log('All sources failed');
+}
+
+function forceRefresh(){ fetchPriceAuto(); }
+
+// start loop
+fetchPriceAuto();
+setInterval(fetchPriceAuto, 10000);
+</script>
+</body>
+</html>
